@@ -1,2 +1,2 @@
 # BsToPhiMuMu
-Bs -> Phi(KK) Mu Mu analysis
+Bs -> Phi(KK) mu+ mu- analysis
