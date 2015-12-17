@@ -272,7 +272,7 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
 
   // --- begin input from python file ---                                                                                                           
   string OutputFileName_;
-  bool BuildLbToLzMuMu_;
+  bool BuildBsToPhiMuMu_;
 
   //----------------------                                                                                                                                 
   // particle properties                                                                                                                                   
@@ -437,10 +437,67 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
 //
 // constructors and destructor
 //
-BsToPhiMuMu::BsToPhiMuMu(const edm::ParameterSet& iConfig)
+BsToPhiMuMu::BsToPhiMuMu(const edm::ParameterSet& iConfig):
+
+  OutputFileName_(iConfig.getParameter<string>("OutputFileName")),
+  BuildBsToPhiMuMu_(iConfig.getUntrackedParameter<bool>("BuildBsToPhiMuMu")),
+
+  // particle properties                                                                                                                                                    
+  MuonMass_(iConfig.getUntrackedParameter<double>("MuonMass")),
+  MuonMassErr_(iConfig.getUntrackedParameter<double>("MuonMassErr")),
+  KaonMass_(iConfig.getUntrackedParameter<double>("KaonMass")),
+  KaonMassErr_(iConfig.getUntrackedParameter<double>("KaonMassErr")),
+  BsMass_(iConfig.getUntrackedParameter<double>("BsMass")),
+
+  // labels                                                                                                                                                                 
+  GenParticlesLabel_(iConfig.getParameter<edm::InputTag>("GenParticlesLabel")),
+  TriggerResultsLabel_(iConfig.getParameter<edm::InputTag>("TriggerResultsLabel")),
+  BeamSpotLabel_(iConfig.getParameter<edm::InputTag>("BeamSpotLabel")),
+  VertexLabel_(iConfig.getParameter<edm::InputTag>("VertexLabel")),
+  MuonLabel_(iConfig.getParameter<edm::InputTag>("MuonLabel")),
+  TrackLabel_(iConfig.getParameter<edm::InputTag>("TrackLabel")),
+  TriggerNames_(iConfig.getParameter< vector<string> >("TriggerNames")),
+  LastFilterNames_(iConfig.getParameter< vector<string> >("LastFilterNames")),
+
+  // gen particle                                                                                                                                                           
+  IsMonteCarlo_(iConfig.getUntrackedParameter<bool>("IsMonteCarlo")),
+  KeepGENOnly_(iConfig.getUntrackedParameter<bool>("KeepGENOnly")),
+  TruthMatchMuonMaxR_(iConfig.getUntrackedParameter<double>("TruthMatchMuonMaxR")),
+  TruthMatchKaonMaxR_(iConfig.getUntrackedParameter<double>("TruthMatchKaonMaxR")),
+
+  // pre-selection cuts                                                                                                                                                     
+  MuonMinPt_(iConfig.getUntrackedParameter<double>("MuonMinPt")),
+  MuonMaxEta_(iConfig.getUntrackedParameter<double>("MuonMaxEta")),
+  MuonMaxDcaBs_(iConfig.getUntrackedParameter<double>("MuonMaxDcaBs")),
+
+  TrkMinPt_(iConfig.getUntrackedParameter<double>("TrkMinPt")),
+  TrkMinDcaSigBs_(iConfig.getUntrackedParameter<double>("TrkMinDcaSigBs")),
+  TrkMaxR_(iConfig.getUntrackedParameter<double>("TrkMaxR")),
+  TrkMaxZ_(iConfig.getUntrackedParameter<double>("TrkMaxZ")),
+
+  MuMuMaxDca_(iConfig.getUntrackedParameter<double>("MuMuMaxDca")),
+  MuMuMinVtxCl_(iConfig.getUntrackedParameter<double>("MuMuMinVtxCl")),
+  MuMuMinPt_(iConfig.getUntrackedParameter<double>("MuMuMinPt")),
+  MuMuMinInvMass_(iConfig.getUntrackedParameter<double>("MuMuMinInvMass")),
+  MuMuMaxInvMass_(iConfig.getUntrackedParameter<double>("MuMuMaxInvMass")),
+  MuMuMinLxySigmaBs_(iConfig.getUntrackedParameter<double>("MuMuMinLxySigmaBs")),
+  MuMuMinCosAlphaBs_(iConfig.getUntrackedParameter<double>("MuMuMinCosAlphaBs")),
+
+  PhiMinMass_(iConfig.getUntrackedParameter<double>("PhiMinMass")),
+  PhiMaxMass_(iConfig.getUntrackedParameter<double>("PhiMaxMass")),
+  BsMinVtxCl_(iConfig.getUntrackedParameter<double>("BsMinVtxCl")),
+  BsMinMass_(iConfig.getUntrackedParameter<double>("BsMinMass")),
+  BsMaxMass_(iConfig.getUntrackedParameter<double>("BsMaxMass"))
+
+
+
+
 
 {
    //now do what ever initialization is needed
+  assert(TriggerNames_.size() == LastFilterNames_.size());
+  for (size_t i = 0; i < TriggerNames_.size(); ++i)
+    mapTriggerToLastFilter_[TriggerNames_[i]] = LastFilterNames_[i];
 
 }
 
