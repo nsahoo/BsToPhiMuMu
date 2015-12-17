@@ -20,15 +20,14 @@
 //
 
 
-//-----------------------                                                                                                                                           
-// system include files                                                                                                                                                       
-//-----------------------                                                                                                                                              
+//-----------------------                                                                                                                      
+// system include files                                                                                                                             
+//-----------------------                                                                                                                     
 #include <memory>
 
-//----------------------                                                                                                                                                     
-// user include files                                                                                                                                                          
-//----------------------                                                                                                                                               
-    
+//----------------------                                                                                                                       
+// user include files                                                                                                                                 
+//----------------------                                                                                                                         
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/EDAnalyzer.h"
 #include "FWCore/Framework/interface/Event.h"
@@ -128,11 +127,11 @@ enum HistName{
   kHistNameSize
 };
 
-//--------------------                                                                                                                                                            
-// Global hist args                                                                                                                                                             
-//--------------------                                                                                                                                                          
+//--------------------                                                                                                                           
+// Global hist args                                                                                                                               
+//--------------------                                                                                                                         
 HistArgs hist_args[kHistNameSize] = {
-  // name, title, n_bins, x_min, x_max                                                                                                                                          
+  // name, title, n_bins, x_min, x_max                                                                                                              
 
   {"h_events", "Processed Events", 1, 0, 1},
   {"h_mupt", "Muon pT; [GeV]", 100, 0, 30},
@@ -159,9 +158,9 @@ HistArgs hist_args[kHistNameSize] = {
 
 };
 
-//--------------------                                                                                                                                                         
-// Define histograms                                                                                                                                                         
-//--------------------                                                                                                                                                           
+//--------------------                                                                                                                                    
+// Define histograms                                                                                                                                       
+//--------------------                                                                                                                                    
 TH1F *histos[kHistNameSize];
 
 
@@ -215,9 +214,216 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
 
   bool hasBeamSpot(const edm::Event&);
 
+  bool calClosestApproachTracks(const reco::TransientTrack,
+                                const reco::TransientTrack,
+                                double&, double &, double &);
+
+  bool hasGoodPhiVertex(const vector<reco::TrackRef>,
+		       RefCountedKinematicTree &);
+
+  bool hasGoodPhiVertexMKC(const vector<reco::TrackRef>,
+			  RefCountedKinematicTree &);
+
+
+  bool hasGoodMuonDcaBs (const reco::TransientTrack, double &, double &);
+  bool hasGoodTrackDcaBs (const reco::TransientTrack, double &, double &);
+  bool hasGoodTrackDcaPoint (const reco::TransientTrack, const GlobalPoint,
+                             double, double &, double &);
+
+  bool hasGoodBsMass(RefCountedKinematicTree, double &);  
+
+  bool hasGoodBsVertex(const reco::TransientTrack, const reco::TransientTrack,   
+                       const vector<reco::TrackRef>, double &, double &, double &,      
+                       RefCountedKinematicTree &, RefCountedKinematicTree &);
+
+  bool hasGoodMuMuVertex (const reco::TransientTrack, const reco::TransientTrack,
+                          reco::TransientTrack &, reco::TransientTrack &,
+                          double &, double &, double &, double &, double &,
+                          double &, double &, double &);
+
+  bool hasGoodTrack(const edm::Event&, const pat::GenericParticle, double &);
+
+  bool hasPrimaryVertex(const edm::Event &);
+
+  void hltReport(const edm::Event&);
+
+  bool matchMuonTrack (const edm::Event&, const reco::TrackRef);
+  bool matchMuonTracks (const edm::Event&, const vector<reco::TrackRef>);
+  bool matchPrimaryVertexTracks ();
+
+  void saveBsToPhiMuMu(const RefCountedKinematicTree);
+  void saveBsVertex(RefCountedKinematicTree);
+  void saveBsCosAlpha(RefCountedKinematicTree);
+  void saveBsCosAlpha2d(RefCountedKinematicTree);
+  void saveBsLsig(RefCountedKinematicTree);
+  void saveBsCtau(RefCountedKinematicTree);
+
+  void saveGenInfo(const edm::Event&);
+  void saveSoftMuonVariables(pat::Muon, pat::Muon, reco::TrackRef, reco::TrackRef);
+  void saveDimuVariables(double, double, double, double, double, double,
+                         double, double, double, double, double, double,
+                         double, double);
+  void saveMuonTriggerMatches(const pat::Muon, const pat::Muon);
+  void saveTruthMatch(const edm::Event& iEvent);
 
 
       // ----------member data ---------------------------
+
+
+  // --- begin input from python file ---                                                                                                           
+  string OutputFileName_;
+  bool BuildLbToLzMuMu_;
+
+  //----------------------                                                                                                                                 
+  // particle properties                                                                                                                                   
+  //----------------------                                                                                                                                    
+  ParticleMass MuonMass_;
+  float MuonMassErr_;
+  ParticleMass KaonMass_;
+  float KaonMassErr_;
+  ParticleMass PhiMass_;
+  float PhiMassErr_;
+  //ParticleMass ProtonMass_;
+  //float ProtonMassErr_;
+  double BsMass_;
+
+  //----------                                                                                                                                                
+  // labels                                                                                                                                               
+  //----------                                                                                                                                               
+  edm::InputTag GenParticlesLabel_;
+  edm::InputTag TriggerResultsLabel_;
+  edm::InputTag BeamSpotLabel_;
+  edm::InputTag VertexLabel_;
+  edm::InputTag MuonLabel_;
+  edm::InputTag LambdaLabel_;
+  edm::InputTag TrackLabel_;
+  vector<string> TriggerNames_;
+  vector<string> LastFilterNames_;
+
+  //---------------                                                                                                                                        
+  // gen particle                                                                                                                                                  
+  //---------------                                                                                                                                          
+  bool   IsMonteCarlo_;
+  bool   KeepGENOnly_;
+  double TruthMatchMuonMaxR_;
+  double TruthMatchKaonMaxR_;
+  //double TruthMatchProtonMaxR_;
+
+  //---------------------                                                                                                                                           
+  // pre-selection cuts                                                                                                                                   
+  //---------------------                                                                                                                              
+  double MuonMinPt_;
+  double MuonMaxEta_;
+  double MuonMaxDcaBs_;
+  double TrkMinPt_;
+  double TrkMinDcaSigBs_;
+  double TrkMaxR_;
+  double TrkMaxZ_;
+  double MuMuMaxDca_;
+  double MuMuMinVtxCl_;
+  double MuMuMinPt_;
+  double MuMuMinInvMass_;
+  double MuMuMaxInvMass_;
+  double MuMuMinLxySigmaBs_;
+  double MuMuMinCosAlphaBs_;
+  double PhiMinMass_;
+  double PhiMaxMass_;
+  double BsMinVtxCl_;
+  double BsMinMass_;
+  double BsMaxMass_;
+
+
+  //--------------------                                                                                                                       
+  // Across the event                                                                                                                                   
+  //--------------------                                                                                                                                     
+  map<string, string> mapTriggerToLastFilter_;
+  reco::BeamSpot beamSpot_;
+  edm::ESHandle<MagneticField> bFieldHandle_;
+  reco::Vertex primaryVertex_;
+
+  //-----------------                                                                                                                                          
+  // Root Variables                                                                                                                                          
+  //-----------------                                                                                                                                           
+  TFile* fout_;
+  TTree* tree_;
+
+  unsigned int run, event, lumiblock, nprivtx;
+  vector<string> *triggernames;
+  vector<int> *triggerprescales;
+
+  //----------                                                                                                                                              
+  // dimuon                                                                                                                                                 
+  //----------                                                                                                                                             
+  vector<double> *mumdcabs, *mumdcabserr, *mumpx, *mumpy, *mumpz;
+  vector<double> *mupdcabs, *mupdcabserr, *muppx, *muppy, *muppz;
+  vector<double> *mumutrkr, *mumutrkz , *mumudca;
+  vector<double> *mumuvtxcl, *mumulsbs, *mumulsbserr;
+  vector<double> *mumucosalphabs, *mumucosalphabserr;
+  vector<double> *mumumass, *mumumasserr;
+
+  //-----------------------                                                                                                                                 
+  // soft muon variables                                                                                                                                     
+  //-----------------------                                                                                                                                  
+  vector<bool>   *mumisgoodmuon, *mupisgoodmuon ;
+  vector<int>    *mumnpixhits, *mupnpixhits, *mumnpixlayers, *mupnpixlayers;
+  vector<int>    *mumntrkhits, *mupntrkhits, *mumntrklayers, *mupntrklayers;
+  vector<double> *mumnormchi2, *mupnormchi2;
+  vector<double> *mumdxyvtx, *mupdxyvtx, *mumdzvtx, *mupdzvtx;
+  vector<string> *mumtriglastfilter, *muptriglastfilter;
+  vector<double> *mumpt, *muppt, *mumeta, *mupeta;
+
+  //--------------------                                                                                                                                   
+  // kaon track                                                                                                                                    
+  //--------------------                                                                                                                                    
+  //vector<int> *prchg;
+  //vector<double> *prpx, *prpy, *prpz;
+  //vector<int> *pichg;
+  //vector<double> *pipx, *pipy, *pipz;
+
+  //--------------
+  // kaon track   
+  //--------------                                                                                                                                                          
+  vector<int> *trkchg; // +1 for K+, -1 for K-                                                                                                                            
+  vector<double> *trkpx, *trkpy, *trkpz, *trkpt;
+  vector<double> *trkdcabs, *trkdcabserr;
+
+  // phi(1020)
+  vector<double> *phimass;
+
+  int nb;
+
+  vector<double> *bpx, *bpxerr, *bpy, *bpyerr, *bpz, *bpzerr ;
+  vector<double>  *bmass, *bmasserr;
+  vector<double> *bvtxcl, *bvtxx, *bvtxxerr, *bvtxy, *bvtxyerr, *bvtxz, *bvtxzerr;
+  vector<double> *bcosalphabs, *bcosalphabserr, *bcosalphabs2d, *bcosalphabs2derr, *blsbs, *blsbserr, *bctau, *bctauerr; 
+
+  // Bs and Bsbar                                                                                                                                                           
+  vector<double> *bbarmass, *bbarmasserr;
+
+  // For MC                                                                                                                                                                 
+  double genbpx, genbpy, genbpz;
+  double genphipx, genphipy, genphipz;
+  double genphivtxx, genphivtxy, genphivtxz;
+
+  //                                                                                                                                                                        
+  double genkppx, genkppy, genkppz;
+  double genkmpx, genkmpy, genkmpz;
+
+  //int gentrkchg;
+  //double gentrkpx, gentrkpy, gentrkpz;
+  double genmumpx, genmumpy, genmumpz;
+  double genmuppx, genmuppy, genmuppz;
+  
+  string decname;
+
+  vector<bool> *istruemum, *istruemup, *istruekp, *istruekm, *istruebs;
+
+
+  // variables to monitor                                                                                                                                                   
+  TDatime t_begin_ , t_now_ ;
+  int n_processed_, n_selected_;
+
+
 };
 
 //
