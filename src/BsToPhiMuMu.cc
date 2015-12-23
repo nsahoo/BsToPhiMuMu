@@ -372,14 +372,6 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
   vector<string> *mumtriglastfilter, *muptriglastfilter;
   vector<double> *mumpt, *muppt, *mumeta, *mupeta;
 
-  //--------------------                                                                                                                                   
-  // kaon track                                                                                                                                    
-  //--------------------                                                                                                                                    
-  //vector<int> *prchg;
-  //vector<double> *prpx, *prpy, *prpz;
-  //vector<int> *pichg;
-  //vector<double> *pipx, *pipy, *pipz;
-
   //--------------
   // kaon track   
   //--------------                                                                                                                                                          
@@ -387,30 +379,42 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
   vector<double> *trkpx, *trkpy, *trkpz, *trkpt;
   vector<double> *trkdcabs, *trkdcabserr;
 
+  //--------------
   // phi(1020)
-  vector<double> *phimass;
+  //--------------
+  vector<int> *kpchg;
+  vector<double> *kppx, *kppy, *kppz ;
+  vector<int> *kmchg;
+  vector<double> *kmpx, *kmpy, *kmpz ;
+  vector<double> *phipx, *phipy, *phipz;
+  vector<double> *phivtxx, *phivtxy, *phivtxz, *phivtxcl, *philsbs, *philsbserr;
 
+  vector<double> *phimass, *phimasserr, *phibarmass, *phibarmasserr;
+
+  //-----------------
+  // Bs and Bsbar
+  //-----------------
   int nb;
-
   vector<double> *bpx, *bpxerr, *bpy, *bpyerr, *bpz, *bpzerr ;
-  vector<double>  *bmass, *bmasserr;
+  vector<double> *bmass, *bmasserr;
   vector<double> *bvtxcl, *bvtxx, *bvtxxerr, *bvtxy, *bvtxyerr, *bvtxz, *bvtxzerr;
   vector<double> *bcosalphabs, *bcosalphabserr, *bcosalphabs2d, *bcosalphabs2derr, *blsbs, *blsbserr, *bctau, *bctauerr; 
 
-  // Bs and Bsbar                                                                                                                                                           
   vector<double> *bbarmass, *bbarmasserr;
 
-  // For MC                                                                                                                                                                 
+  //----------
+  // For MC   
+  //----------                                                                                                                                                              
   double genbpx, genbpy, genbpz;
   double genphipx, genphipy, genphipz;
   double genphivtxx, genphivtxy, genphivtxz;
 
   //                                                                                                                                                                        
+  int genkpchg;
   double genkppx, genkppy, genkppz;
+  int genkmchg;
   double genkmpx, genkmpy, genkmpz;
 
-  //int gentrkchg;
-  //double gentrkpx, gentrkpy, gentrkpz;
   double genmumpx, genmumpy, genmumpz;
   double genmuppx, genmuppy, genmuppz;
   
@@ -487,10 +491,59 @@ BsToPhiMuMu::BsToPhiMuMu(const edm::ParameterSet& iConfig):
   PhiMaxMass_(iConfig.getUntrackedParameter<double>("PhiMaxMass")),
   BsMinVtxCl_(iConfig.getUntrackedParameter<double>("BsMinVtxCl")),
   BsMinMass_(iConfig.getUntrackedParameter<double>("BsMinMass")),
-  BsMaxMass_(iConfig.getUntrackedParameter<double>("BsMaxMass"))
+  BsMaxMass_(iConfig.getUntrackedParameter<double>("BsMaxMass")),
+
+  tree_(0),
+  triggernames(0), triggerprescales(0),
+  mumdcabs(0), mumdcabserr(0), mumpx(0), mumpy(0), mumpz(0),
+  mupdcabs(0),  mupdcabserr(0), muppx(0),  muppy(0), muppz(0),
+  mumutrkr(0), mumutrkz(0), mumudca(0),  mumuvtxcl(0),  mumulsbs(0),
+  mumulsbserr(0), mumucosalphabs(0),  mumucosalphabserr(0),
+  mumumass(0), mumumasserr(0),
+  mumisgoodmuon(0), mupisgoodmuon(0),
+  mumnpixhits(0), mupnpixhits(0), mumnpixlayers(0), mupnpixlayers(0),
+  mumntrkhits(0), mupntrkhits(0), mumntrklayers(0), mupntrklayers(0),
+  mumnormchi2(0), mupnormchi2(0), mumdxyvtx(0), mupdxyvtx(0),
+  mumdzvtx(0), mupdzvtx(0), mumtriglastfilter(0), muptriglastfilter(0),
+  mumpt(0), muppt(0), mumeta(0), mupeta(0),
+
+  trkchg(0), trkpx(0), trkpy(0), trkpz(0), trkpt(0),
+  trkdcabs(0), trkdcabserr(0),
+
+  kpchg(0),
+  kppx(0), kppy(0), kppz(0),
+  
+  kmchg(0),
+  kmpx(0), kmpy(0), kmpz(0),
 
 
+  phipx(0), phipy(0), phipz(0),
+  phivtxx(0), phivtxy(0), phivtxz(0),
 
+  phimass(0), phimasserr(0), phibarmass(0), phibarmasserr(0),
+
+  nb(0), bpx(0), bpxerr(0), bpy(0), bpyerr(0), bpz(0), bpzerr(0), bmass(0), bmasserr(0),
+  bvtxcl(0), bvtxx(0), bvtxxerr(0), bvtxy(0), bvtxyerr(0), bvtxz(0), bvtxzerr(0),
+  bcosalphabs(0), bcosalphabserr(0), bcosalphabs2d(0), bcosalphabs2derr(0), blsbs(0), blsbserr(0), bctau(0), bctauerr(0),
+
+  bbarmass(0), bbarmasserr(0),
+
+  genbpx(0), genbpy(0), genbpz(0),
+  genphipx(0), genphipy(0), genphipz(0), genphivtxx(0), genphivtxy(0), genphivtxz(0),
+
+  genkpchg(0),
+  genkppx(0), genkppy(0), genkppz(0),
+
+  genkmchg(0),
+  genkmpx(0), genkmpy(0), genkmpz(0),
+
+  genmumpx(0), genmumpy(0), genmumpz(0),
+  genmuppx(0), genmuppy(0), genmuppz(0),
+
+
+  decname(""),
+
+  istruemum(0), istruemup(0), istruekp(0), istruekm(0), istruebs(0)
 
 
 {
