@@ -11,9 +11,9 @@
      [Notes on implementation]
 */
 //====================================================================
-// Original Author:  Niladribihari Sahoo,42 3-024,+41227662373,
-//       copyright @ N.Sahoo, NISER, Bhubaneswar
-//         Created:  Sat Nov 28 07:33:44 CET 2015
+// original author:  Niladribihari Sahoo,42 3-024,+41227662373,
+//        copyright  @ N.Sahoo, NISER, Bhubaneswar
+//         created:  Sat Nov 28 07:33:44 CET 2015
 //====================================================================
 // $Id$
 //
@@ -382,9 +382,9 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
   //--------------
   // phi(1020)
   //--------------
-  vector<int> *kpchg;
+  vector<int>    *kpchg;
   vector<double> *kppx, *kppy, *kppz ;
-  vector<int> *kmchg;
+  vector<int>    *kmchg;
   vector<double> *kmpx, *kmpy, *kmpz ;
   vector<double> *phipx, *phipy, *phipz;
   vector<double> *phivtxx, *phivtxy, *phivtxz, *phivtxcl, *philsbs, *philsbserr;
@@ -422,8 +422,9 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
 
   vector<bool> *istruemum, *istruemup, *istruekp, *istruekm, *istruebs;
 
-
-  // variables to monitor                                                                                                                                                   
+  //-----------------------
+  // variables to monitor  
+  //-----------------------                                                                                                                                                 
   TDatime t_begin_ , t_now_ ;
   int n_processed_, n_selected_;
 
@@ -540,7 +541,6 @@ BsToPhiMuMu::BsToPhiMuMu(const edm::ParameterSet& iConfig):
   genmumpx(0), genmumpy(0), genmumpz(0),
   genmuppx(0), genmuppy(0), genmuppz(0),
 
-
   decname(""),
 
   istruemum(0), istruemup(0), istruekp(0), istruekm(0), istruebs(0)
@@ -572,19 +572,42 @@ BsToPhiMuMu::~BsToPhiMuMu()
 void
 BsToPhiMuMu::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
-   using namespace edm;
+
+  clearVariables();
+
+  run = iEvent.id().run() ;
+  event = iEvent.id().event() ;
+  lumiblock = iEvent.luminosityBlock();
+
+  n_processed_ += 1;
+  histos[h_events]->Fill(0);
+
+  if (IsMonteCarlo_) saveGenInfo(iEvent);
+
+  hltReport(iEvent);
+
+  if ( KeepGENOnly_){
+    tree_->Fill();
+    n_selected_ += 1;
+  }else{
+    if ( hasBeamSpot(iEvent) ) {
+      iSetup.get<IdealMagneticFieldRecord>().get(bFieldHandle_);
+      if ( bFieldHandle_.isValid() && hasPrimaryVertex(iEvent) ) {
+        buildBsToPhiMuMu(iEvent) ;
+        if (IsMonteCarlo_) saveTruthMatch(iEvent);
+        n_selected_ += 1;
+      }
+    }
+
+    if (IsMonteCarlo_ || nb > 0){ // Keep failed events for MC to calculate reconstruction efficiency.                                                                       
+      tree_->Fill();
+    }
+  }
 
 
+  clearVariables();
 
-#ifdef THIS_IS_AN_EVENT_EXAMPLE
-   Handle<ExampleData> pIn;
-   iEvent.getByLabel("example",pIn);
-#endif
-   
-#ifdef THIS_IS_AN_EVENTSETUP_EXAMPLE
-   ESHandle<SetupData> pSetup;
-   iSetup.get<SetupRecord>().get(pSetup);
-#endif
+
 }
 
 
@@ -592,12 +615,188 @@ BsToPhiMuMu::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 void 
 BsToPhiMuMu::beginJob()
 {
+
+  t_begin_.Set();
+  printf("\n ---------- Begin Job ---------- \n");
+  t_begin_.Print();
+
+  n_processed_ = 0;
+  n_selected_ = 0;
+
+
+  fout_ = new TFile(OutputFileName_.c_str(), "RECREATE");
+  fout_->cd();
+
+  for(int i=0; i<kHistNameSize; i++) {
+    histos[i] = new TH1F(hist_args[i].name, hist_args[i].title,
+                         hist_args[i].n_bins,
+                         hist_args[i].x_min, hist_args[i].x_max);
+
+  }
+
+  tree_ = new TTree ("tree", "BsToPhiMuMu");
+
+  tree_->Branch("run", &run, "run/i");
+  tree_->Branch("event", &event, "event/i");
+  tree_->Branch("lumiblock", &lumiblock, "lumiblock/i");
+  tree_->Branch("nprivtx", &nprivtx, "nprivtx/i");
+  tree_->Branch("triggernames", &triggernames);
+  tree_->Branch("triggerprescales", &triggerprescales);
+  tree_->Branch("mumdcabs", &mumdcabs);
+  tree_->Branch("mumdcabserr", &mumdcabserr);
+  tree_->Branch("mumpx", &mumpx);
+  tree_->Branch("mumpy", &mumpy);
+  tree_->Branch("mumpz", &mumpz);
+  tree_->Branch("mupdcabs", &mupdcabs);
+  tree_->Branch("mupdcabserr", &mupdcabserr);
+  tree_->Branch("muppx", &muppx);
+  tree_->Branch("muppy", &muppy);
+  tree_->Branch("muppz", &muppz);
+  tree_->Branch("mumutrkr", &mumutrkr);
+  tree_->Branch("mumutrkz", &mumutrkz);
+  tree_->Branch("mumudca", &mumudca);
+  tree_->Branch("mumuvtxcl", &mumuvtxcl);
+  tree_->Branch("mumulsbs", &mumulsbs);
+  tree_->Branch("mumulsbserr", &mumulsbserr);
+  tree_->Branch("mumucosalphabs", &mumucosalphabs);
+  tree_->Branch("mumucosalphabserr", &mumucosalphabserr);
+  tree_->Branch("mumumass", &mumumass);
+  tree_->Branch("mumumasserr", &mumumasserr);
+  tree_->Branch("mumisgoodmuon", &mumisgoodmuon);
+  tree_->Branch("mupisgoodmuon", &mupisgoodmuon);
+  tree_->Branch("mumnpixhits", &mumnpixhits);
+  tree_->Branch("mupnpixhits", &mupnpixhits);
+  tree_->Branch("mumnpixlayers", &mumnpixlayers);
+  tree_->Branch("mupnpixlayers", &mupnpixlayers);
+  tree_->Branch("mumntrkhits", &mumntrkhits);
+  tree_->Branch("mupntrkhits", &mupntrkhits);
+  tree_->Branch("mumntrklayers", &mumntrklayers);
+  tree_->Branch("mupntrklayers", &mupntrklayers);
+  tree_->Branch("mumnormchi2", &mumnormchi2);
+  tree_->Branch("mupnormchi2", &mupnormchi2);
+  tree_->Branch("mumdxyvtx", &mumdxyvtx);
+  tree_->Branch("mupdxyvtx", &mupdxyvtx);
+  tree_->Branch("mumdzvtx", &mumdzvtx);
+  tree_->Branch("mupdzvtx", &mupdzvtx);
+  tree_->Branch("mumtriglastfilter", &mumtriglastfilter);
+  tree_->Branch("muptriglastfilter", &muptriglastfilter);
+  tree_->Branch("mumpt", &mumpt);
+  tree_->Branch("muppt", &muppt);
+  tree_->Branch("mumeta", &mumeta);
+  tree_->Branch("mupeta", &mupeta);
+  tree_->Branch("trkchg", &trkchg);
+  tree_->Branch("trkpx", &trkpx);
+  tree_->Branch("trkpy", &trkpy);
+  tree_->Branch("trkpz", &trkpz);
+  tree_->Branch("trkpt", &trkpt);
+  tree_->Branch("trkdcabs", &trkdcabs);
+  tree_->Branch("trkdcabserr", &trkdcabserr);
+  tree_->Branch("kpchg", &kpchg);
+  tree_->Branch("kppx", &kppx);
+  tree_->Branch("kppy", &kppy);
+  tree_->Branch("kppz", &kppz);
+  tree_->Branch("kmchg", &kmchg);
+  tree_->Branch("kmpx", &kmpx);
+  tree_->Branch("kmpy", &kmpy);
+  tree_->Branch("kmpz", &kmpz);
+
+  tree_->Branch("phipx", &phipx);
+  tree_->Branch("phipy", &phipy);
+  tree_->Branch("phipz", &phipz);
+  tree_->Branch("phivtxx", &phivtxx);
+  tree_->Branch("phivtxy", &phivtxy);
+  tree_->Branch("phivtxz", &phivtxz);
+  tree_->Branch("phimass", &phimass);
+  tree_->Branch("phimasserr", &phimasserr);
+  tree_->Branch("phibarmass", &phibarmass);
+  tree_->Branch("phibarmasserr", &phibarmasserr);
+  tree_->Branch("nb", &nb, "nb/I");
+  tree_->Branch("bpx", &bpx);
+  tree_->Branch("bpxerr", &bpxerr);
+  tree_->Branch("bpy", &bpy);
+  tree_->Branch("bpyerr", &bpyerr);
+  tree_->Branch("bpz", &bpz);
+  tree_->Branch("bpzerr", &bpzerr);
+  tree_->Branch("bmass", &bmass);
+  tree_->Branch("bmasserr", &bmasserr);
+  tree_->Branch("bvtxcl", &bvtxcl);
+  tree_->Branch("bvtxx", &bvtxx);
+  tree_->Branch("bvtxxerr", &bvtxxerr);
+  tree_->Branch("bvtxy", &bvtxy);
+  tree_->Branch("bvtxyerr", &bvtxyerr);
+  tree_->Branch("bvtxz", &bvtxz);
+  tree_->Branch("bvtxzerr", &bvtxzerr);
+  tree_->Branch("bcosalphabs", &bcosalphabs);
+  tree_->Branch("bcosalphabserr", &bcosalphabserr);
+  tree_->Branch("bcosalphabs2d", &bcosalphabs2d);
+  tree_->Branch("bcosalphabs2derr", &bcosalphabs2derr);
+  tree_->Branch("blsbs", &blsbs);
+  tree_->Branch("blsbserr", &blsbserr);
+  tree_->Branch("bctau", &bctau);
+  tree_->Branch("bctauerr", &bctauerr);
+  tree_->Branch("bbarmass", &bbarmass);
+  tree_->Branch("bbarmasserr", &bbarmasserr);
+
+  if (IsMonteCarlo_) {
+    tree_->Branch("genbpx",        &genbpx     , "genbpx/D"    );
+    tree_->Branch("genbpy",        &genbpy     , "genbpy/D"    );
+    tree_->Branch("genbpz",        &genbpz     , "genbpz/D"    );
+    tree_->Branch("genphipx",      &genphipx   , "genphipx/D"  );
+    tree_->Branch("genphipy",      &genphipy   , "genphipy/D"  );
+    tree_->Branch("genphipz",      &genphipz   , "genphipz/D"  );
+    tree_->Branch("genphivtxx",    &genphivtxx    , "genphivtxx/D"   );
+    tree_->Branch("genphivtxy",    &genphivtxy    , "genphivtxy/D"   );
+    tree_->Branch("genphivtxz",    &genphivtxz    , "genphivtxz/D"   );
+    tree_->Branch("genkpchg",    &genkpchg   , "genkpchg/I"   );
+    tree_->Branch("genkppx",     &genkppx    , "genkppx/D"   );
+    tree_->Branch("genkppy",     &genkppy    , "genkppy/D"   );
+    tree_->Branch("genkppz",     &genkppz    , "genkppz/D"   );
+    tree_->Branch("genkmchg",    &genkmchg   , "genkmchg/I"   );
+    tree_->Branch("genkmpx",     &genkmpx    , "genkmpx/D"   );
+    tree_->Branch("genkmpy",     &genkmpy    , "genkmpy/D"   );
+    tree_->Branch("genkmpz",     &genkmpz    , "genkmpz/D"   );
+    tree_->Branch("genmumpx",    &genmumpx   , "genmumpx/D"  );
+    tree_->Branch("genmumpy",    &genmumpy   , "genmumpy/D"  );
+    tree_->Branch("genmumpz",    &genmumpz   , "genmumpz/D"  );
+    tree_->Branch("genmuppx",    &genmuppx   , "genmuppx/D"  );
+    tree_->Branch("genmuppy",    &genmuppy   , "genmuppy/D"  );
+    tree_->Branch("genmuppz",    &genmuppz   , "genmuppz/D"  );
+
+    tree_->Branch("decname",  &decname);
+    tree_->Branch("istruemum",  &istruemum );
+    tree_->Branch("istruemup",  &istruemup );
+    tree_->Branch("istruekp",   &istruekp  );
+    tree_->Branch("istruekm",   &istruekm  );
+    tree_->Branch("istruebs",   &istruebs  );
+
+  }
+
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 BsToPhiMuMu::endJob() 
 {
+
+
+  fout_->cd();
+  tree_->Write();
+
+  for(int i = 0; i < kHistNameSize; i++) {
+    histos[i]->Write();
+    histos[i]->Delete();
+  }
+  fout_->Close();
+
+  t_now_.Set();
+  printf(" \n ---------- End Job ---------- \n" ) ;
+  t_now_.Print();
+  printf(" processed: %i \n selected: %i \n \
+ duration: %i sec \n rate: %g evts/sec\n",
+	 n_processed_, n_selected_,
+	 t_now_.Convert() - t_begin_.Convert(),
+	 float(n_processed_)/(t_now_.Convert()-t_begin_.Convert()) );
+
 }
 
 // ------------ method called when starting to processes a run  ------------
@@ -633,6 +832,151 @@ BsToPhiMuMu::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   desc.setUnknown();
   descriptions.addDefault(desc);
 }
+
+void 
+BsToPhiMuMu::clearVariables(){
+
+  run = 0;
+  event = 0;
+  lumiblock = 0;
+  nprivtx = 0;
+  triggernames->clear();
+  triggerprescales->clear();
+  mumdcabs->clear();  mumdcabserr->clear();  mumpx->clear();   mumpy->clear();  mumpz->clear();
+  mupdcabs->clear();  mupdcabserr->clear();  muppx->clear();   muppy->clear();  muppz->clear();
+  mumutrkr->clear(); mumutrkz->clear();
+  mumudca->clear();  mumuvtxcl->clear();   mumulsbs->clear();  mumulsbserr->clear();
+  mumucosalphabs->clear();  mumucosalphabserr->clear();
+  mumumass->clear(); mumumasserr->clear();
+  mumisgoodmuon->clear();  mupisgoodmuon->clear();
+  mumnpixhits->clear();  mupnpixhits->clear();  mumnpixlayers->clear();  mupnpixlayers->clear();
+  mumntrkhits->clear();  mupntrkhits->clear();  mumntrklayers->clear();  mupntrklayers->clear();
+
+  mumnormchi2->clear(); mupnormchi2->clear();
+  mumdxyvtx->clear(); mupdxyvtx->clear();
+  mumdzvtx->clear(); mupdzvtx->clear();
+  mumtriglastfilter->clear(); muptriglastfilter->clear();
+  mumpt->clear(); muppt->clear();
+  mumeta->clear(); mupeta->clear();
+
+  trkchg->clear(); trkpx->clear(); trkpy->clear(); trkpz->clear(); trkpt->clear();
+  trkdcabs->clear(); trkdcabserr->clear();
+
+  kpchg->clear();
+  kppx->clear(); kppy->clear(); kppz->clear();
+ 
+  kmchg->clear();
+  kmpx->clear(); kmpy->clear(); kmpz->clear();
+
+  phipx->clear(); phipy->clear(); phipz->clear();
+  phivtxx->clear(); phivtxy->clear(); phivtxz->clear();
+
+  phimass->clear(); phimasserr->clear();
+  phibarmass->clear(); phibarmasserr->clear();
+
+  nb = 0;
+
+  bpx->clear(); bpxerr->clear(); bpy->clear();  bpyerr->clear();
+  bpz->clear(); bpzerr->clear();
+
+  bmass->clear(); bmasserr->clear();
+  bvtxcl->clear(); bvtxx->clear(); bvtxxerr->clear(); bvtxy->clear(); bvtxyerr->clear();
+  bvtxz->clear(); bvtxzerr->clear(); bcosalphabs->clear(); bcosalphabserr->clear();
+  bcosalphabs2d->clear(); bcosalphabs2derr->clear();
+  blsbs->clear(); blsbserr->clear(); bctau->clear(); bctauerr->clear();
+
+  bbarmass->clear(); bbarmasserr->clear();
+
+  if (IsMonteCarlo_) {
+
+    genbpx = 0;  genbpy = 0;  genbpz = 0;
+    genphipx = 0;  genphipy = 0;  genphipz = 0;
+    genphivtxx = 0; genphivtxy = 0; genphivtxz = 0;
+
+    genkpchg = 0;
+    genkppx = 0;  genkppy = 0;  genkppz = 0;
+    genkmchg = 0;
+    genkmpx = 0;  genkmpy = 0;  genkmpz = 0;
+
+    genmumpx = 0;  genmumpy = 0;  genmumpz = 0;
+    genmuppx = 0;  genmuppy = 0;  genmuppz = 0;
+
+    decname = "";
+    istruemum->clear(); istruemup->clear(); istruekp->clear();
+    istruekm->clear(); istruebs->clear();
+
+
+  }
+
+}
+
+
+void
+BsToPhiMuMu::hltReport(const edm::Event& iEvent)
+{
+
+  edm::Handle<edm::TriggerResults> hltTriggerResults;
+  try {iEvent.getByLabel( TriggerResultsLabel_, hltTriggerResults ); }
+  catch ( ... ) { edm::LogInfo("myHLT")
+      << __LINE__ << " : couldn't get handle on HLT Trigger" ; }
+
+  HLTConfigProvider hltConfig_;
+  if (hltTriggerResults.isValid()) {
+    const edm::TriggerNames& triggerNames_ = iEvent.triggerNames(*hltTriggerResults);
+
+    for (unsigned int itrig = 0; itrig < hltTriggerResults->size(); itrig++){
+
+      // Only consider the triggered case.                                                                                                                          
+      if ((*hltTriggerResults)[itrig].accept() == 1){
+
+        string triggername = triggerNames_.triggerName(itrig);
+        int triggerprescale = hltConfig_.prescaleValue(itrig, triggername);
+
+        // Loop over our interested HLT trigger names to find if this event contains.                                                                               
+        for (unsigned int it=0; it<TriggerNames_.size(); it++){
+          if (triggername.find(TriggerNames_[it]) != string::npos) {
+            // save the no versioned case                                                                                                                            
+            triggernames->push_back(TriggerNames_[it]);
+            triggerprescales->push_back(triggerprescale);
+
+          }}}}}
+
+}
+
+bool
+BsToPhiMuMu::hasBeamSpot(const edm::Event& iEvent)
+{
+  edm::Handle<reco::BeamSpot> beamSpotHandle;
+  iEvent.getByLabel(BeamSpotLabel_, beamSpotHandle);
+
+  if ( ! beamSpotHandle.isValid() ) {
+    edm::LogError("myBeam") << "No beam spot available from EventSetup" ;
+    return false;
+  }
+
+  beamSpot_ = *beamSpotHandle;
+  return true;
+}
+
+bool
+BsToPhiMuMu::hasPrimaryVertex(const edm::Event& iEvent)
+{
+  edm::Handle<reco::VertexCollection> recVtxs;
+  iEvent.getByLabel(VertexLabel_, recVtxs);
+  nprivtx = recVtxs->size();
+
+  for (std::vector<reco::Vertex>::const_iterator iVertex = recVtxs->begin();
+       iVertex != recVtxs->end(); iVertex++) {
+    primaryVertex_ = *(iVertex);
+    if (primaryVertex_.isValid()) break;
+  }
+
+  if (!primaryVertex_.isValid()) return false;
+
+  return true;
+}
+
+
 
 //define this as a plug-in
 DEFINE_FWK_MODULE(BsToPhiMuMu);
