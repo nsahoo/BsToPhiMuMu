@@ -1166,7 +1166,8 @@ BsToPhiMuMu::buildBsToPhiMuMu(const edm::Event& iEvent)
   } // close mu- loop
 
   if ( nb > 0) {
-    edm::LogInfo("myBs") << "Found " << nb << " Bs -> phi(KK) mu mu.";
+    edm::LogInfo("myBs") << "Found " << nb << " Bs -> phi(KK) mu+ mu- ";
+    printf("------------------------------------------------------------\n");
     return true;
   }
   return false;
