@@ -218,12 +218,8 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
                                 const reco::TransientTrack,
                                 double&, double &, double &);
 
-  bool hasGoodPhiVertex(const vector<reco::TrackRef>,
-		       RefCountedKinematicTree &);
-
-  bool hasGoodPhiVertexMKC(const vector<reco::TrackRef>,
-			  RefCountedKinematicTree &);
-
+  bool hasGoodPhiVertex(const reco::TransientTrack,
+			const reco::TransientTrack, double &);
 
   bool hasGoodMuonDcaBs (const reco::TransientTrack, double &, double &);
   bool hasGoodTrackDcaBs (const reco::TransientTrack, double &, double &);
@@ -232,9 +228,9 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
 
   bool hasGoodBsMass(RefCountedKinematicTree, double &);  
 
-  bool hasGoodBsVertex(const reco::TransientTrack, const reco::TransientTrack,   
-                       const vector<reco::TrackRef>, double &, double &, double &,      
-                       RefCountedKinematicTree &, RefCountedKinematicTree &);
+  bool hasGoodBsVertex(const reco::TransientTrack, const reco::TransientTrack,
+		       const reco::TransientTrack, const reco::TransientTrack,
+		       double &, double &, double &, RefCountedKinematicTree &);
 
   bool hasGoodMuMuVertex (const reco::TransientTrack, const reco::TransientTrack,
                           reco::TransientTrack &, reco::TransientTrack &,
@@ -599,7 +595,7 @@ BsToPhiMuMu::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
       }
     }
 
-    if (IsMonteCarlo_ || nb > 0){ // Keep failed events for MC to calculate reconstruction efficiency.                                                                       
+    if (IsMonteCarlo_ || nb > 0){ // Keep failed events for MC to calculate reconstruction efficiency.                                                               
       tree_->Fill();
     }
   }
@@ -976,7 +972,601 @@ BsToPhiMuMu::hasPrimaryVertex(const edm::Event& iEvent)
   return true;
 }
 
+//-------------------------------------------------------
+//  main function to build BsToPhiMuMu candidate
+//-------------------------------------------------------
 
+bool
+BsToPhiMuMu::buildBsToPhiMuMu(const edm::Event& iEvent)
+{
+
+  // init variables
+  edm::Handle< vector<pat::Muon> > patMuonHandle;
+  iEvent.getByLabel(MuonLabel_, patMuonHandle);
+  if( patMuonHandle->size() < 2 ) return false;
+
+  edm::Handle< vector<pat::GenericParticle> >thePATTrackHandle;
+  iEvent.getByLabel(TrackLabel_, thePATTrackHandle);
+
+  bool passed;
+  double DCAmumBS, DCAmumBSErr, DCAmupBS, DCAmupBSErr;
+  double mumutrk_R, mumutrk_Z, DCAmumu;
+  double trk_R, trk_Z, trk_DCA;
+  reco::TransientTrack refitMupTT, refitMumTT;
+  double mu_mu_vtx_cl, mu_mu_pt, mu_mu_mass, mu_mu_mass_err;
+  double MuMuLSBS, MuMuLSBSErr;
+  double MuMuCosAlphaBS, MuMuCosAlphaBSErr;
+  double trk_pt, phi_mass;
+  //double b_vtx_chisq, b_vtx_cl, b_mass, bbar_mass;
+  double DCAPhiTrkBS, DCAPhiTrkBSErr;
+  RefCountedKinematicTree vertexFitTree, barVertexFitTree;
+
+
+  // ---------------------------------
+  // loop 1: mu-
+  // ---------------------------------
+  for (vector<pat::Muon>::const_iterator iMuonM = patMuonHandle->begin();
+       iMuonM != patMuonHandle->end(); iMuonM++){
+
+    reco::TrackRef muTrackm = iMuonM->innerTrack();
+    if ( muTrackm.isNull() ) continue;
+
+    histos[h_mupt]->Fill(muTrackm->pt());
+    histos[h_mueta]->Fill(muTrackm->eta());
+
+    if ( (muTrackm->charge() != -1) ||
+	 (muTrackm->pt() < MuonMinPt_) ||
+	 (fabs(muTrackm->eta()) > MuonMaxEta_)) continue;
+
+    // check mu- DCA to beam spot
+    const reco::TransientTrack muTrackmTT(muTrackm, &(*bFieldHandle_));
+    passed = hasGoodMuonDcaBs(muTrackmTT, DCAmumBS, DCAmumBSErr) ;
+    histos[h_mumdcabs]->Fill(DCAmumBS);
+    if ( ! passed ) continue;
+
+
+    // ---------------------------------
+    // loop 2: mu+
+    // ---------------------------------
+    for (vector<pat::Muon>::const_iterator iMuonP = patMuonHandle->begin();
+	 iMuonP != patMuonHandle->end(); iMuonP++){
+
+      reco::TrackRef muTrackp = iMuonP->innerTrack();
+      if ( muTrackp.isNull() ||
+	   (muTrackp->charge() != 1) ||
+	   (muTrackp->pt() < MuonMinPt_) ||
+	   (fabs(muTrackp->eta()) > MuonMaxEta_)) continue;
+
+      // check mu+ DCA to beam spot
+      const reco::TransientTrack muTrackpTT(muTrackp, &(*bFieldHandle_));
+      passed = hasGoodMuonDcaBs(muTrackpTT, DCAmupBS, DCAmupBSErr);
+      if ( ! passed ) continue;
+
+      // check goodness of muons closest approach and the 3D-DCA
+      // passed = hasGoodClosestApproachTracks(muTrackpTT, muTrackmTT,
+      //     mumutrk_R, mumutrk_Z, DCAmumu);
+      if ( !calClosestApproachTracks(muTrackpTT, muTrackmTT,
+				     mumutrk_R, mumutrk_Z, DCAmumu)) continue;
+      histos[h_mumutrkr]->Fill(mumutrk_R);
+      histos[h_mumutrkz]->Fill(mumutrk_Z);
+      histos[h_mumudca]->Fill(DCAmumu);
+      // if ( !passed ) continue;
+      if ( mumutrk_R > TrkMaxR_ ||
+	      mumutrk_Z > TrkMaxZ_ ||
+	   DCAmumu > MuMuMaxDca_ ) continue;
+
+      // check dimuon vertex
+      passed = hasGoodMuMuVertex(muTrackpTT, muTrackmTT, refitMupTT, refitMumTT,
+				 mu_mu_vtx_cl, mu_mu_pt,
+				 mu_mu_mass, mu_mu_mass_err,
+				 MuMuLSBS, MuMuLSBSErr,
+				 MuMuCosAlphaBS, MuMuCosAlphaBSErr);
+
+      histos[h_mumuvtxcl]->Fill(mu_mu_vtx_cl);
+      histos[h_mumupt]->Fill(mu_mu_pt);
+      histos[h_mumumass]->Fill(mu_mu_mass);
+      histos[h_mumulxybs]->Fill(MuMuLSBS/MuMuLSBSErr);
+      histos[h_mumucosalphabs]->Fill(MuMuCosAlphaBS);
+      if ( !passed) continue;
+
+
+      // ---------------------------------
+      // loop 3: track-
+      // ---------------------------------
+      for ( vector<pat::GenericParticle>::const_iterator iTrackM
+	      = thePATTrackHandle->begin();
+	    iTrackM != thePATTrackHandle->end(); ++iTrackM ) {
+	
+	reco::TrackRef Trackm = iTrackM->track();
+	if ( Trackm.isNull() || (Trackm->charge() != -1) ) continue;
+
+	passed = hasGoodTrack(iEvent, *iTrackM, trk_pt);
+	histos[h_trkpt]->Fill(trk_pt);
+	if (!passed) continue;
+	
+	// compute track DCA to beam spot
+	const reco::TransientTrack theTrackmTT(Trackm, &(*bFieldHandle_));
+	passed = hasGoodTrackDcaBs(theTrackmTT, DCAPhiTrkBS, DCAPhiTrkBSErr);
+	histos[h_trkdcasigbs]->Fill(DCAPhiTrkBS/DCAPhiTrkBSErr);
+	if (!passed) continue;
+
+	// ---------------------------------
+	// loop 4: track+
+	// ---------------------------------
+	for ( vector<pat::GenericParticle>::const_iterator iTrackP
+		= thePATTrackHandle->begin();
+	      iTrackP != thePATTrackHandle->end(); ++iTrackP ) {
+	  
+	  reco::TrackRef Trackp = iTrackP->track();
+	  if ( Trackp.isNull() || (Trackp->charge() != 1) ) continue;
+
+	  passed = hasGoodTrack(iEvent, *iTrackP, trk_pt);
+	  // histos[h_trkpt]->Fill(trk_pt);
+	  if (!passed) continue;
+	  
+	  // compute track DCA to beam spot
+	  const reco::TransientTrack theTrackpTT(Trackp, &(*bFieldHandle_));
+	  passed = hasGoodTrackDcaBs(theTrackpTT, DCAPhiTrkBS, DCAPhiTrkBSErr);
+	  if (!passed) continue;
+
+
+	  // check goodness of two tracks closest approach and the 3D-DCA
+	  if (! calClosestApproachTracks(theTrackpTT, theTrackmTT,
+					 trk_R, trk_Z, trk_DCA)) continue ;
+	  if ( trk_R > TrkMaxR_ || trk_Z > TrkMaxZ_ ) continue;
+	  
+	  // check two tracks vertex for Bs
+	  if ( ! hasGoodPhiVertex(theTrackmTT, theTrackpTT,
+					   phi_mass) ) continue;
+	  if ( phi_mass < PhiMinMass_ || phi_mass > PhiMaxMass_ ) continue;
+
+	  // check two tracks vertex for Bsbar
+	  if ( ! hasGoodPhiVertex(theTrackpTT, theTrackmTT,
+					   phi_mass) ) continue;
+	  if ( phi_mass < PhiMinMass_ || phi_mass > PhiMaxMass_ ) continue;
+
+	  /*	  
+	  // fit Bs vertex  mu- mu+ K- K+
+	  if ( ! hasGoodBsVertex(muTrackmTT, muTrackpTT, theTrackmTT, theTrackpTT,
+				 b_vtx_chisq, b_vtx_cl, b_mass,
+				 vertexFitTree) ) continue;
+
+	  if ( b_vtx_cl < BsMinVtxCl_ ||
+	       b_mass < BsMinMass_ || b_mass > BsMaxMass_ ) continue;
+
+	  // fit Bsbar vertex mu- mu+ K+ K-
+	  if ( ! hasGoodBsVertex(muTrackmTT, muTrackpTT, theTrackpTT, theTrackmTT,
+				 b_vtx_chisq, b_vtx_cl, bbar_mass,
+				 barVertexFitTree) ) continue;
+
+	  if ( b_vtx_cl < BsMinVtxCl_ ||
+	       bbar_mass < BsMinMass_ || bbar_mass > BsMaxMass_ ) continue;
+	  */
+
+
+	  // need to check with primaryVertex tracks?
+
+	  nb++;
+
+	  /*
+	  // save the tree variables
+	  saveDimuVariables(DCAmumBS, DCAmumBSErr, DCAmupBS, DCAmupBSErr,
+			    mumutrk_R, mumutrk_Z, DCAmumu, mu_mu_vtx_cl,
+			    MuMuLSBS, MuMuLSBSErr,
+			    MuMuCosAlphaBS, MuMuCosAlphaBSErr,
+			    mu_mu_mass, mu_mu_mass_err);
+	  */
+
+	//saveSoftMuonVariables(*iMuonM, *iMuonP, muTrackm, muTrackp);
+	  // saveBsToPhiMuMu(vertexFitTree);
+
+	} // close track+ loop
+      } // close track- loop
+    } // close mu+ loop
+  } // close mu- loop
+
+  if ( nb > 0) {
+    edm::LogInfo("myBs") << "Found " << nb << " Bs -> phi(KK) mu mu.";
+    return true;
+  }
+  return false;
+
+
+}
+
+void
+BsToPhiMuMu::calLS (double Vx, double Vy, double Vz,
+		     double Wx, double Wy, double Wz,
+		     double VxErr2, double VyErr2, double VzErr2,
+		     double VxyCov, double VxzCov, double VyzCov,
+		     double WxErr2, double WyErr2, double WzErr2,
+		     double WxyCov, double WxzCov, double WyzCov,
+		     double* deltaD, double* deltaDErr)
+{
+  *deltaD = sqrt((Vx-Wx) * (Vx-Wx) + (Vy-Wy) * (Vy-Wy) + (Vz-Wz) * (Vz-Wz));
+  if (*deltaD > 0.)
+    *deltaDErr = sqrt((Vx-Wx) * (Vx-Wx) * VxErr2 +
+		      (Vy-Wy) * (Vy-Wy) * VyErr2 +
+		      (Vz-Wz) * (Vz-Wz) * VzErr2 +
+		      
+		      (Vx-Wx) * (Vy-Wy) * 2.*VxyCov +
+		      (Vx-Wx) * (Vz-Wz) * 2.*VxzCov +
+		      (Vy-Wy) * (Vz-Wz) * 2.*VyzCov +
+		      
+		      (Vx-Wx) * (Vx-Wx) * WxErr2 +
+		      (Vy-Wy) * (Vy-Wy) * WyErr2 +
+		      (Vz-Wz) * (Vz-Wz) * WzErr2 +
+		      
+		      (Vx-Wx) * (Vy-Wy) * 2.*WxyCov +
+		      (Vx-Wx) * (Vz-Wz) * 2.*WxzCov +
+		      (Vy-Wy) * (Vz-Wz) * 2.*WyzCov) / *deltaD;
+  else *deltaDErr = 0.;
+}
+
+
+void
+BsToPhiMuMu::calCosAlpha (double Vx, double Vy, double Vz,
+			   double Wx, double Wy, double Wz,
+			   double VxErr2, double VyErr2, double VzErr2,
+			   double VxyCov, double VxzCov, double VyzCov,
+			   double WxErr2, double WyErr2, double WzErr2,
+			   double WxyCov, double WxzCov, double WyzCov,
+			   double* cosAlpha, double* cosAlphaErr)
+{
+  double Vnorm = sqrt(Vx*Vx + Vy*Vy + Vz*Vz);
+  double Wnorm = sqrt(Wx*Wx + Wy*Wy + Wz*Wz);
+  double VdotW = Vx*Wx + Vy*Wy + Vz*Wz;
+
+  if ((Vnorm > 0.) && (Wnorm > 0.)) {
+    *cosAlpha = VdotW / (Vnorm * Wnorm);
+    *cosAlphaErr = sqrt( (
+			  (Vx*Wnorm - VdotW*Wx) * (Vx*Wnorm - VdotW*Wx) * WxErr2 +
+			  (Vy*Wnorm - VdotW*Wy) * (Vy*Wnorm - VdotW*Wy) * WyErr2 +
+			  (Vz*Wnorm - VdotW*Wz) * (Vz*Wnorm - VdotW*Wz) * WzErr2 +
+
+			  (Vx*Wnorm - VdotW*Wx) * (Vy*Wnorm - VdotW*Wy) * 2.*WxyCov +
+			  (Vx*Wnorm - VdotW*Wx) * (Vz*Wnorm - VdotW*Wz) * 2.*WxzCov +
+			  (Vy*Wnorm - VdotW*Wy) * (Vz*Wnorm - VdotW*Wz) * 2.*WyzCov) /
+			 (Wnorm*Wnorm*Wnorm*Wnorm) +
+			 
+			 ((Wx*Vnorm - VdotW*Vx) * (Wx*Vnorm - VdotW*Vx) * VxErr2 +
+			  (Wy*Vnorm - VdotW*Vy) * (Wy*Vnorm - VdotW*Vy) * VyErr2 +
+			  (Wz*Vnorm - VdotW*Vz) * (Wz*Vnorm - VdotW*Vz) * VzErr2 +
+			  
+			  (Wx*Vnorm - VdotW*Vx) * (Wy*Vnorm - VdotW*Vy) * 2.*VxyCov +
+			  (Wx*Vnorm - VdotW*Vx) * (Wz*Vnorm - VdotW*Vz) * 2.*VxzCov +
+			  (Wy*Vnorm - VdotW*Vy) * (Wz*Vnorm - VdotW*Vz) * 2.*VyzCov) /
+			 (Vnorm*Vnorm*Vnorm*Vnorm) ) / (Wnorm*Vnorm);
+  }  else {
+    *cosAlpha = 0.;
+    *cosAlphaErr = 0.;
+  }
+
+}
+
+
+void
+BsToPhiMuMu::calCosAlpha2d (double Vx, double Vy, double Vz,
+			     double Wx, double Wy, double Wz,
+			     double VxErr2, double VyErr2, double VzErr2,
+			     double VxyCov, double VxzCov, double VyzCov,
+			     double WxErr2, double WyErr2, double WzErr2,
+			     double WxyCov, double WxzCov, double WyzCov,
+			     double* cosAlpha2d, double* cosAlpha2dErr)
+{
+  double Vnorm = sqrt(Vx*Vx + Vy*Vy + Vz*Vz);
+  double Wnorm = sqrt(Wx*Wx + Wy*Wy + Wz*Wz);
+  double VdotW = Vx*Wx + Vy*Wy + Vz*Wz;
+
+  if ((Vnorm > 0.) && (Wnorm > 0.)) {
+    *cosAlpha2d = VdotW / (Vnorm * Wnorm);
+    *cosAlpha2dErr = sqrt( (
+			    (Vx*Wnorm - VdotW*Wx) * (Vx*Wnorm - VdotW*Wx) * WxErr2 +
+			    (Vy*Wnorm - VdotW*Wy) * (Vy*Wnorm - VdotW*Wy) * WyErr2 +
+			    (Vz*Wnorm - VdotW*Wz) * (Vz*Wnorm - VdotW*Wz) * WzErr2 +
+
+			    (Vx*Wnorm - VdotW*Wx) * (Vy*Wnorm - VdotW*Wy) * 2.*WxyCov +
+			    (Vx*Wnorm - VdotW*Wx) * (Vz*Wnorm - VdotW*Wz) * 2.*WxzCov +
+			    (Vy*Wnorm - VdotW*Wy) * (Vz*Wnorm - VdotW*Wz) * 2.*WyzCov) /
+			   (Wnorm*Wnorm*Wnorm*Wnorm) +
+
+			   ((Wx*Vnorm - VdotW*Vx) * (Wx*Vnorm - VdotW*Vx) * VxErr2 +
+			    (Wy*Vnorm - VdotW*Vy) * (Wy*Vnorm - VdotW*Vy) * VyErr2 +
+			    (Wz*Vnorm - VdotW*Vz) * (Wz*Vnorm - VdotW*Vz) * VzErr2 +
+
+			    (Wx*Vnorm - VdotW*Vx) * (Wy*Vnorm - VdotW*Vy) * 2.*VxyCov +
+			    (Wx*Vnorm - VdotW*Vx) * (Wz*Vnorm - VdotW*Vz) * 2.*VxzCov +
+			    (Wy*Vnorm - VdotW*Vy) * (Wz*Vnorm - VdotW*Vz) * 2.*VyzCov) /
+			   (Vnorm*Vnorm*Vnorm*Vnorm) ) / (Wnorm*Vnorm);
+  }  else {
+    *cosAlpha2d = 0.;
+    *cosAlpha2dErr = 0.;
+  }
+
+}
+
+
+bool
+BsToPhiMuMu::hasGoodMuonDcaBs (const reco::TransientTrack muTrackTT,
+				double &muDcaBs, double &muDcaBsErr)
+{
+  TrajectoryStateClosestToPoint theDCAXBS =
+    muTrackTT.trajectoryStateClosestToPoint(
+					    GlobalPoint(beamSpot_.position().x(),
+							beamSpot_.position().y(),beamSpot_.position().z()));
+
+  if ( !theDCAXBS.isValid() )  return false;
+
+  muDcaBs = theDCAXBS.perigeeParameters().transverseImpactParameter();
+  muDcaBsErr = theDCAXBS.perigeeError().transverseImpactParameterError();
+  if ( fabs(muDcaBs) > MuonMaxDcaBs_ )   return false;
+  return true;
+}
+
+bool
+BsToPhiMuMu::hasGoodTrackDcaBs (const reco::TransientTrack TrackTT,
+				 double &DcaBs, double &DcaBsErr)
+{
+  TrajectoryStateClosestToPoint theDCAXBS =
+    TrackTT.trajectoryStateClosestToPoint(
+					  GlobalPoint(beamSpot_.position().x(),
+						      beamSpot_.position().y(),beamSpot_.position().z()));
+
+  if ( !theDCAXBS.isValid() )  return false;
+
+  DcaBs = theDCAXBS.perigeeParameters().transverseImpactParameter();
+  DcaBsErr = theDCAXBS.perigeeError().transverseImpactParameterError();
+  if ( fabs(DcaBs/DcaBsErr) < TrkMinDcaSigBs_ )   return false;
+  return true;
+}
+
+
+bool
+BsToPhiMuMu::hasGoodTrackDcaPoint (const reco::TransientTrack track,
+				    const GlobalPoint p,
+				    double maxdca, double &dca, double &dcaerr)
+{
+  TrajectoryStateClosestToPoint theDCAX = track.trajectoryStateClosestToPoint(p);
+  if ( !theDCAX.isValid() ) return false;
+
+  dca = theDCAX.perigeeParameters().transverseImpactParameter();
+  dcaerr = theDCAX.perigeeError().transverseImpactParameterError();
+  if ( dca > maxdca ) return false;
+
+  return true;
+}
+
+
+bool
+BsToPhiMuMu::calClosestApproachTracks (const reco::TransientTrack trackpTT,
+					const reco::TransientTrack trackmTT,
+					double & trk_R,
+					double & trk_Z,
+					double & trk_DCA)
+{
+  ClosestApproachInRPhi ClosestApp;
+  ClosestApp.calculate(trackpTT.initialFreeState(),
+		       trackmTT.initialFreeState());
+  if (! ClosestApp.status() )  return false ;
+
+  GlobalPoint XingPoint = ClosestApp.crossingPoint();
+
+  trk_R = sqrt(XingPoint.x()*XingPoint.x() + XingPoint.y()*XingPoint.y());
+  trk_Z = fabs(XingPoint.z());
+
+  // if ((sqrt(XingPoint.x()*XingPoint.x() + XingPoint.y()*XingPoint.y()) >
+  //      TrkMaxR_) || (fabs(XingPoint.z()) > TrkMaxZ_))  return false;
+
+  trk_DCA = ClosestApp.distance();
+  // if (DCAmumu > MuMuMaxDca_) return false;
+
+  return true;
+}
+
+
+bool
+BsToPhiMuMu::hasGoodMuMuVertex (const reco::TransientTrack muTrackpTT,
+				 const reco::TransientTrack muTrackmTT,
+				 reco::TransientTrack &refitMupTT,
+				 reco::TransientTrack &refitMumTT,
+				 double & mu_mu_vtx_cl, double & mu_mu_pt,
+				 double & mu_mu_mass, double & mu_mu_mass_err,
+				 double & MuMuLSBS, double & MuMuLSBSErr,
+				 double & MuMuCosAlphaBS,
+				 double & MuMuCosAlphaBSErr)
+{
+  KinematicParticleFactoryFromTransientTrack partFactory;
+  KinematicParticleVertexFitter PartVtxFitter;
+
+  vector<RefCountedKinematicParticle> muonParticles;
+  double chi = 0.;
+  double ndf = 0.;
+  muonParticles.push_back(partFactory.particle(muTrackmTT,
+					       MuonMass_,chi,ndf,MuonMassErr_));
+  muonParticles.push_back(partFactory.particle(muTrackpTT,
+					       MuonMass_,chi,ndf,MuonMassErr_));
+
+  RefCountedKinematicTree mumuVertexFitTree = PartVtxFitter.fit(muonParticles);
+
+  if ( !mumuVertexFitTree->isValid())  return false;
+
+  mumuVertexFitTree->movePointerToTheTop();
+  RefCountedKinematicParticle mumu_KP = mumuVertexFitTree->currentParticle();
+  RefCountedKinematicVertex mumu_KV = mumuVertexFitTree->currentDecayVertex();
+
+  if ( !mumu_KV->vertexIsValid()) return false;
+
+  mu_mu_vtx_cl = TMath::Prob((double)mumu_KV->chiSquared(),
+			     int(rint(mumu_KV->degreesOfFreedom())));
+
+  if (mu_mu_vtx_cl < MuMuMinVtxCl_)  return false;
+
+  // extract the re-fitted tracks
+  mumuVertexFitTree->movePointerToTheTop();
+
+  mumuVertexFitTree->movePointerToTheFirstChild();
+  RefCountedKinematicParticle refitMum = mumuVertexFitTree->currentParticle();
+  refitMumTT = refitMum->refittedTransientTrack();
+
+  mumuVertexFitTree->movePointerToTheNextChild();
+  RefCountedKinematicParticle refitMup = mumuVertexFitTree->currentParticle();
+  refitMupTT = refitMup->refittedTransientTrack();
+
+  TLorentzVector mymum, mymup, mydimu;
+
+  mymum.SetXYZM(refitMumTT.track().momentum().x(),
+		refitMumTT.track().momentum().y(),
+		refitMumTT.track().momentum().z(), MuonMass_);
+
+  mymup.SetXYZM(refitMupTT.track().momentum().x(),
+		refitMupTT.track().momentum().y(),
+		refitMupTT.track().momentum().z(), MuonMass_);
+
+  mydimu = mymum + mymup;
+  mu_mu_pt = mydimu.Perp();
+
+  mu_mu_mass = mumu_KP->currentState().mass();
+  mu_mu_mass_err = sqrt(mumu_KP->currentState().kinematicParametersError().
+			matrix()(6,6));
+
+  if ((mu_mu_pt < MuMuMinPt_) || (mu_mu_mass < MuMuMinInvMass_) ||
+      (mu_mu_mass > MuMuMaxInvMass_))  return false;
+
+  // compute the distance between mumu vtx and beam spot
+  calLS (mumu_KV->position().x(),mumu_KV->position().y(),0.0,
+	 beamSpot_.position().x(),beamSpot_.position().y(),0.0,
+	 mumu_KV->error().cxx(),mumu_KV->error().cyy(),0.0,
+	 mumu_KV->error().matrix()(0,1),0.0,0.0,
+	 beamSpot_.covariance()(0,0),beamSpot_.covariance()(1,1),0.0,
+	 beamSpot_.covariance()(0,1),0.0,0.0,
+	 &MuMuLSBS,&MuMuLSBSErr);
+
+  if (MuMuLSBS/MuMuLSBSErr < MuMuMinLxySigmaBs_)  return false;
+
+  calCosAlpha(mumu_KP->currentState().globalMomentum().x(),
+	      mumu_KP->currentState().globalMomentum().y(),
+	      0.0,
+	      mumu_KV->position().x() - beamSpot_.position().x(),
+	      mumu_KV->position().y() - beamSpot_.position().y(),
+	      0.0,
+	      mumu_KP->currentState().kinematicParametersError().matrix()(3,3),
+	      mumu_KP->currentState().kinematicParametersError().matrix()(4,4),
+	      0.0,
+	      mumu_KP->currentState().kinematicParametersError().matrix()(3,4),
+	      0.0,
+	      0.0,
+	      mumu_KV->error().cxx() + beamSpot_.covariance()(0,0),
+	      mumu_KV->error().cyy() + beamSpot_.covariance()(1,1),
+	      0.0,
+	      mumu_KV->error().matrix()(0,1) + beamSpot_.covariance()(0,1),
+	      0.0,
+	      0.0,
+	      &MuMuCosAlphaBS,&MuMuCosAlphaBSErr);
+
+  if (MuMuCosAlphaBS < MuMuMinCosAlphaBs_)  return false;
+
+  return true;
+}
+
+
+bool
+BsToPhiMuMu::matchMuonTrack (const edm::Event& iEvent,
+			      const reco::TrackRef theTrackRef)
+{
+  if ( theTrackRef.isNull() ) return false;
+
+  edm::Handle< vector<pat::Muon> > thePATMuonHandle;
+  iEvent.getByLabel(MuonLabel_, thePATMuonHandle);
+
+  reco::TrackRef muTrackRef;
+  for (vector<pat::Muon>::const_iterator iMuon = thePATMuonHandle->begin();
+       iMuon != thePATMuonHandle->end(); iMuon++){
+
+    muTrackRef = iMuon->innerTrack();
+    if ( muTrackRef.isNull() ) continue;
+
+    if (muTrackRef == theTrackRef) return true;
+  }
+
+  return false;
+}
+
+
+bool
+BsToPhiMuMu::matchMuonTracks (const edm::Event& iEvent,
+			       const vector<reco::TrackRef> theTracks)
+{
+  reco::TrackRef theTrackRef;
+  for(unsigned int j = 0; j < theTracks.size(); ++j) {
+    theTrackRef = theTracks[j];
+    if ( matchMuonTrack(iEvent, theTrackRef) ) return true;
+  }
+  return false;
+}
+
+
+bool
+BsToPhiMuMu::hasGoodTrack(const edm::Event& iEvent,
+			  const pat::GenericParticle iTrack,
+			  double & kaon_trk_pt)
+{
+  reco::TrackRef theTrackRef = iTrack.track();
+  if ( theTrackRef.isNull() ) return false;
+
+  // veto muon tracks
+  if ( matchMuonTrack(iEvent, theTrackRef) ) return false;
+
+  // veto pion tracks from Kshort
+  //if ( matchKshortTrack(iEvent, theTrackRef) ) return false;
+
+  // check the track kinematics
+  kaon_trk_pt = theTrackRef->pt();
+
+  if ( theTrackRef->pt() < TrkMinPt_ ) return false;
+
+  return true;
+}
+
+
+bool
+BsToPhiMuMu::hasGoodPhiVertex( const reco::TransientTrack kaonmTT,
+			       const reco::TransientTrack kaonpTT,
+			       double & phi_mass)
+{
+  KinematicParticleFactoryFromTransientTrack pFactory;
+
+  float chi = 0.;
+  float ndf = 0.;
+
+  vector<RefCountedKinematicParticle> phiParticles;
+  phiParticles.push_back(pFactory.particle(kaonmTT,KaonMass_,chi,ndf,KaonMassErr_));
+  phiParticles.push_back(pFactory.particle(kaonpTT,KaonMass_,chi,ndf,KaonMassErr_));
+
+  KinematicParticleVertexFitter fitter;
+  RefCountedKinematicTree phiVertexFitTree = fitter.fit(phiParticles);
+  if ( ! phiVertexFitTree->isValid() ) return false ;
+
+  phiVertexFitTree->movePointerToTheTop();
+  RefCountedKinematicParticle phi_KP = phiVertexFitTree->currentParticle();
+  RefCountedKinematicVertex phi_KV   = phiVertexFitTree->currentDecayVertex();
+  if ( !phi_KV->vertexIsValid() ) return false;
+
+  phi_mass = phi_KP->currentState().mass();
+
+  return true;
+
+}
+
+void
+BsToPhiMuMu::saveGenInfo(const edm::Event& iEvent){
+
+}
+
+
+void
+BsToPhiMuMu::saveTruthMatch(const edm::Event& iEvent){
+
+}
 
 //define this as a plug-in
 DEFINE_FWK_MODULE(BsToPhiMuMu);
