@@ -10,11 +10,12 @@
  Implementation:
      [Notes on implementation]
 */
-//====================================================================
-// original author:  Niladribihari Sahoo,42 3-024,+41227662373,
-//        copyright  @ N.Sahoo, NISER, Bhubaneswar
-//         created:  Sat Nov 28 07:33:44 CET 2015
-//====================================================================
+//=====================================================================
+// original author:  Niladribihari Sahoo,42 3-024,+41227662373,        |
+//        copyright  @ N.Sahoo, NISER, Bhubaneswar                     |
+//         created:  Sat Nov 28 07:33:44 CET 2015                      |
+//         added saveGenInfo  (sat 16 jan 2016)                        |
+//=====================================================================
 // $Id$
 //
 //
@@ -279,8 +280,6 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
   float KaonMassErr_;
   ParticleMass PhiMass_;
   float PhiMassErr_;
-  //ParticleMass ProtonMass_;
-  //float ProtonMassErr_;
   double BsMass_;
 
   //----------                                                                                                                                                
@@ -303,7 +302,6 @@ class BsToPhiMuMu : public edm::EDAnalyzer {
   bool   KeepGENOnly_;
   double TruthMatchMuonMaxR_;
   double TruthMatchKaonMaxR_;
-  //double TruthMatchProtonMaxR_;
 
   //---------------------                                                                                                                                           
   // pre-selection cuts                                                                                                                                   
@@ -1062,6 +1060,8 @@ BsToPhiMuMu::buildBsToPhiMuMu(const edm::Event& iEvent)
 				 MuMuLSBS, MuMuLSBSErr,
 				 MuMuCosAlphaBS, MuMuCosAlphaBSErr);
 
+      cout << "hasGoodMuMuVertex: " << boolalpha << passed << endl;
+
       histos[h_mumuvtxcl]->Fill(mu_mu_vtx_cl);
       histos[h_mumupt]->Fill(mu_mu_pt);
       histos[h_mumumass]->Fill(mu_mu_mass);
@@ -1558,8 +1558,135 @@ BsToPhiMuMu::hasGoodPhiVertex( const reco::TransientTrack kaonmTT,
 
 }
 
+
 void
 BsToPhiMuMu::saveGenInfo(const edm::Event& iEvent){
+  edm::Handle<reco::GenParticleCollection> genparticles;
+  iEvent.getByLabel(GenParticlesLabel_, genparticles );
+
+  // loop over all gen particles                                                                                                                      
+  for( size_t i = 0; i < genparticles->size(); ++i ) {
+    const reco::GenParticle & b = (*genparticles)[i];
+
+    // only select Bs candidate                                                                                                                 
+    if ( abs(b.pdgId()) != BS_PDG_ID ) continue;
+
+    int imum(-1), imup(-1), iphi(-1), ikp(-1), ikm(-1);
+    int ijpsi(-1), ipsi2s(-1);
+
+    // loop over all Bs daughters                                                                                                       
+    for ( size_t j = 0; j < b.numberOfDaughters(); ++j){
+      const reco::Candidate  &dau = *(b.daughter(j));
+
+      if (dau.pdgId() == MUONMINUS_PDG_ID) imum = j;
+      if (dau.pdgId() == -MUONMINUS_PDG_ID) imup = j;
+      if (abs(dau.pdgId()) == PHI_PDG_ID) iphi = j;
+      if (dau.pdgId() == JPSI_PDG_ID ) ijpsi = j;
+      if (dau.pdgId() == PSI2S_PDG_ID ) ipsi2s = j;
+
+    }
+
+    if ( iphi == -1 ) continue;
+
+    const reco::Candidate & phi = *(b.daughter(iphi));
+
+    for ( size_t j = 0; j < phi.numberOfDaughters(); ++j){
+      const reco::Candidate  &dau = *(phi.daughter(j));
+      if (dau.pdgId() == KAONPLUS_PDG_ID) ikp = j;
+      if (dau.pdgId() == -KAONPLUS_PDG_ID) ikm = j;
+
+    }
+
+    if (ikp == -1 || ikm == -1) continue;
+
+
+    // store the Bs and phi vars                                                                                                                        
+    const reco::Candidate & kp = *(phi.daughter(ikp));
+    const reco::Candidate & km = *(phi.daughter(ikm));
+
+    const reco::Candidate *mum = NULL;
+    const reco::Candidate *mup = NULL;
+
+    //--------------------
+    // Bs -> phi mu mu    
+    //--------------------                                                                                                                       
+    if (imum != -1 && imup != -1) {
+      // cout << "Found GEN Bs -> phi mu mu " << endl;                                                                                                    
+      mum = b.daughter(imum);
+      mup = b.daughter(imup);
+      decname = "BsToPhiMuMu";
+    }
+
+    //----------------------------
+    // Bs -> phi J/psi(->mu mu)   
+    //----------------------------                                                                                                            
+    else if ( ijpsi != -1 ) {
+      // cout << "Found GEN Bs --> phi J/psi " << endl;                                                                                                  
+      const reco::Candidate & jpsi = *(b.daughter(ijpsi));
+      for ( size_t j = 0; j < jpsi.numberOfDaughters(); ++j){
+        const reco::Candidate  &dau = *(jpsi.daughter(j));
+        if ( dau.pdgId() == MUONMINUS_PDG_ID) imum = j;
+        if ( dau.pdgId() == -MUONMINUS_PDG_ID) imup = j;
+      }
+      if (imum != -1 && imup != -1) {
+        mum = jpsi.daughter(imum);
+        mup = jpsi.daughter(imup);
+        decname = "BsToPhiJPsi";
+      }
+    }
+
+    //------------------------------
+    // Bs -> phi psi(2S)(->mu mu)   
+    //------------------------------                                                                                                                    
+    else if ( ipsi2s != -1) {
+      // cout << "Found GEN Bs --> phi psi(2S) " << endl;                                                                                                 
+      const reco::Candidate & psi2s = *(b.daughter(ipsi2s));
+      for ( size_t j = 0; j < psi2s.numberOfDaughters(); ++j){
+        const reco::Candidate  &dau = *(psi2s.daughter(j));
+        if ( dau.pdgId() == MUONMINUS_PDG_ID) imum = j;
+        if ( dau.pdgId() == -MUONMINUS_PDG_ID) imup = j;
+      }
+      if (imum != -1 && imup != -1) {
+        mum = psi2s.daughter(imum);
+        mup = psi2s.daughter(imup);
+        decname = "BsToPhiPsi2S";
+      }
+    }
+
+    if ( mum == NULL || mup == NULL) continue;
+
+    // save gen info                                                                                                                                     
+    genbpx = b.px();
+    genbpy = b.py();
+    genbpz = b.pz();
+
+    genphipx = phi.px();
+    genphipy = phi.py();
+    genphipz = phi.pz();
+
+    genphivtxx = phi.vx();
+    genphivtxy = phi.vy();
+    genphivtxz = phi.vz();
+
+    genkpchg = kp.charge();
+    genkppx = kp.px();
+    genkppy = kp.py();
+    genkppz = kp.pz();
+
+    genkmchg = km.charge();
+    genkmpx = km.px();
+    genkmpy = km.py();
+    genkmpz = km.pz();
+
+    genmumpx = mum->px();
+    genmumpy = mum->py();
+    genmumpz = mum->pz();
+
+    genmuppx = mup->px();
+    genmuppy = mup->py();
+    genmuppz = mup->pz();
+
+  }
 
 }
 
