@@ -50,6 +50,8 @@ makeTrackCandidates(process,
 from PhysicsTools.PatAlgos.tools.coreTools import *
 removeMCMatching(process, ['All'], outputModules=[])
 
+
+
 process.ntuple = cms.EDAnalyzer(
     'BsToPhiMuMu',
 
@@ -60,7 +62,7 @@ process.ntuple = cms.EDAnalyzer(
     MuonMassErr = cms.untracked.double(3.5e-9),   
     KaonMass = cms.untracked.double(0.493677), 
     KaonMassErr = cms.untracked.double(1.6e-5),
-    BsMass = cms.untracked.double(5.),          ## put the Bs Mass (pdg value)
+    BsMass = cms.untracked.double(5.36677),          ## put the Bs Mass (pdg value)
 
     # labels
     GenParticlesLabel = cms.InputTag("genParticles"),
@@ -100,8 +102,8 @@ process.ntuple = cms.EDAnalyzer(
     TrkMaxZ = cms.untracked.double(280.0), # [cm] ==> size of tracker volume in Z direction
 
     ## change the numbers below
-    PhiMinMass = cms.untracked.double(0.74), # [GeV/c2]  - 3 sigma of the width
-    PhiMaxMass = cms.untracked.double(1.04), # [GeV/c2]  + 3 sigma of the width
+    PhiMinMass = cms.untracked.double(1.005), # [GeV/c2]  - 3 sigma of the width(~5MeV)
+    PhiMaxMass = cms.untracked.double(1.035), # [GeV/c2]  + 3 sigma of the width
 
     BsMinVtxCl = cms.untracked.double(0.01), 
     BsMinMass = cms.untracked.double(3.0), # [GeV/c2] 
