@@ -96,18 +96,18 @@ process.ntuple = cms.EDAnalyzer(
     MuMuMinCosAlphaBs = cms.untracked.double(0.9),
 
     # pre-selection cuts 
-    TrkMinPt = cms.untracked.double(0.2), # 0.4 [GeV/c]
-    TrkMinDcaSigBs = cms.untracked.double(0.1), # 0.8 hadron DCA/sigma w/respect to BS (=>changed Max to Min)
+    TrkMinPt = cms.untracked.double(0.4), # 0.4 [GeV/c]
+    TrkMinDcaSigBs = cms.untracked.double(0.8), # 0.8 hadron DCA/sigma w/respect to BS (=>changed Max to Min)
     TrkMaxR = cms.untracked.double(110.0), # [cm] ==> size of tracker volume in radial direction
     TrkMaxZ = cms.untracked.double(280.0), # [cm] ==> size of tracker volume in Z direction
 
-    ## change the numbers below
-    PhiMinMass = cms.untracked.double(1.005), # [GeV/c2]  - 3 sigma of the width(~5MeV)
-    PhiMaxMass = cms.untracked.double(1.035), # [GeV/c2]  + 3 sigma of the width
+    ## phi(1020) mass = 1019.461 +/- 0.019 MeV, full width = 4.266 +/- 0.031 MeV
+    PhiMinMass = cms.untracked.double(1.00), # [GeV/c2]  - 3 sigma of the width(~5MeV)
+    PhiMaxMass = cms.untracked.double(1.04), # [GeV/c2]  + 3 sigma of the width
 
     BsMinVtxCl = cms.untracked.double(0.01), 
-    BsMinMass = cms.untracked.double(3.0), # [GeV/c2] 
-    BsMaxMass = cms.untracked.double(8.0), # [GeV/c2]  
+    BsMinMass = cms.untracked.double(4.5), # [GeV/c2] 
+    BsMaxMass = cms.untracked.double(6.5), # [GeV/c2]  
 
 )
 
