@@ -145,18 +145,17 @@ HistArgs hist_args[kHistNameSize] = {
   {"h_mumudca",  "#mu^{+}#mu^{-} DCA; [cm]", 100, 0, 20},
   {"h_mumuvtxcl",  "#mu^{+}#mu^{-} vertex CL", 100, 0, 1},
   {"h_mumupt",    "#mu^{+}#mu^{-} pT ; pT [GeV]", 100, 0, 50},
-  {"h_mumumass", "#mu^{+}#mu^{-} invariant mass; M(#mu^{+}#mu^{-}) [GeV/c^{2}]",
-   100, 2, 20},
+  {"h_mumumass", "#mu^{+}#mu^{-} invariant mass; M(#mu^{+}#mu^{-}) [GeV/c^{2}]", 100, 2, 20},
   {"h_mumulxybs", "#mu^{+}#mu^{-} Lxy #sigma beam spot", 100, 0, 100},
 
   {"h_mumucosalphabs", "#mu^{+}#mu^{-} cos #alpha beam spot", 100, 0, 1},
   {"h_trkpt", "Pion track pT; pT [GeV]", 100, 0, 20},
   {"h_trkdcasigbs", "Pion track DCA/#sigma beam spot; DCA/#sigma", 1000, 0, 100},
   {"h_bsvtxchisq", "B_{s} decay vertex chisq", 100, 0, 1000},
-  {"h_bsvtxcl", "#B_{s} decay vertex CL", 100, 0, 1},
+  {"h_bsvtxcl", "B_{s} decay vertex CL", 100, 0, 1},
 
   {"h_phimass", "#phi(1020) mass; M(KK) [GeV/^{2}]", 100, 0, 20},   
-  {"h_bsmass", "B_{s} mass; M(KK#mu#mu}) [GeV]", 100, 0, 20},                                                                                           
+  {"h_bsmass", "B_{s} mass; M(KK#mu#mu) [GeV]", 100, 0, 20},                                                                                           
 
 };
 
@@ -1130,7 +1129,7 @@ BsToPhiMuMu::buildBsToPhiMuMu(const edm::Event& iEvent)
 	  if ( ! hasGoodPhiVertex(theTrackpTT, theTrackmTT, refitKpTT, refitKmTT, phi_vtx_cl, phi_mass) ) continue;
 	  if ( phi_mass < PhiMinMass_ || phi_mass > PhiMaxMass_ ) continue;
 
-
+	  histos[h_phimass]->Fill(phi_mass);
 
 
 	  // fit Bs vertex  mu- mu+ K- K+
@@ -1147,7 +1146,8 @@ BsToPhiMuMu::buildBsToPhiMuMu(const edm::Event& iEvent)
 
 	  if ( (b_vtx_cl < BsMinVtxCl_) || (b_mass < BsMinMass_) || (b_mass > BsMaxMass_) ) continue;
 
-
+	  histos[h_bsvtxcl]->Fill(b_vtx_cl);
+	  histos[h_bsmass]->Fill(b_mass);
 
 	  // need to check with primaryVertex tracks?
 
@@ -1165,8 +1165,21 @@ BsToPhiMuMu::buildBsToPhiMuMu(const edm::Event& iEvent)
 	  saveSoftMuonVariables(*iMuonM, *iMuonP, muTrackm, muTrackp);
 	  // saveBsToPhiMuMu(vertexFitTree);
 
+	  trkdcabs->push_back(DCAPhiTrkBS);
+          trkdcabserr->push_back(DCAPhiTrkBSErr);
 	  phimass->push_back(phi_mass);
-	  bmass->push_back(b_mass);
+	  bvtxcl->push_back(b_vtx_cl);
+	  //bmass->push_back(b_mass);
+
+	
+	  saveBsToPhiMuMu(vertexFitTree);
+          saveBsVertex(vertexFitTree);
+          saveBsCosAlpha(vertexFitTree);
+          saveBsCosAlpha2d(vertexFitTree);
+          saveBsLsig(vertexFitTree);
+          saveBsCtau(vertexFitTree);
+	  
+
 
 	} // close track+ loop
       } // close track- loop
@@ -1648,6 +1661,241 @@ BsToPhiMuMu::hasGoodBsVertex(const reco::TransientTrack mu1TT,
 
   return true;
 
+}
+
+void
+BsToPhiMuMu::saveBsToPhiMuMu(const RefCountedKinematicTree vertexFitTree){
+
+  vertexFitTree->movePointerToTheTop(); // Bs --> phi(KK) mu+ mu-                                                                                         
+  RefCountedKinematicParticle b_KP = vertexFitTree->currentParticle();
+
+  bpx->push_back(b_KP->currentState().globalMomentum().x());
+  bpxerr->push_back( sqrt( b_KP->currentState().kinematicParametersError().matrix()(3,3) ) );
+  bpy->push_back(b_KP->currentState().globalMomentum().y());
+  bpyerr->push_back( sqrt( b_KP->currentState().kinematicParametersError().matrix()(4,4) ) );
+  bpz->push_back(b_KP->currentState().globalMomentum().z());
+  bpzerr->push_back( sqrt( b_KP->currentState().kinematicParametersError().matrix()(5,5) ) );
+  bmass->push_back(b_KP->currentState().mass());
+  bmasserr->push_back( sqrt( b_KP->currentState().kinematicParametersError().matrix()(6,6) ) );
+
+  vertexFitTree->movePointerToTheFirstChild(); // mu1                                                                                                      
+  RefCountedKinematicParticle mu1_KP = vertexFitTree->currentParticle();
+  vertexFitTree->movePointerToTheNextChild();  // mu2                                                                                                         
+  RefCountedKinematicParticle mu2_KP = vertexFitTree->currentParticle();
+
+  RefCountedKinematicParticle mup_KP, mum_KP ;
+
+  if ( mu1_KP->currentState().particleCharge() > 0 ) mup_KP = mu1_KP;
+  if ( mu1_KP->currentState().particleCharge() < 0 ) mum_KP = mu1_KP;
+  if ( mu2_KP->currentState().particleCharge() > 0 ) mup_KP = mu2_KP;
+  if ( mu2_KP->currentState().particleCharge() < 0 ) mum_KP = mu2_KP;
+
+  muppx->push_back(mup_KP->currentState().globalMomentum().x());
+  muppy->push_back(mup_KP->currentState().globalMomentum().y());
+  muppz->push_back(mup_KP->currentState().globalMomentum().z());
+
+  mumpx->push_back(mum_KP->currentState().globalMomentum().x());
+  mumpy->push_back(mum_KP->currentState().globalMomentum().y());
+  mumpz->push_back(mum_KP->currentState().globalMomentum().z());
+
+  // add the variables for K+ and K-  ??
+
+  vertexFitTree->movePointerToTheNextChild();
+  RefCountedKinematicParticle k1_KP = vertexFitTree->currentParticle();
+  vertexFitTree->movePointerToTheNextChild();
+  RefCountedKinematicParticle k2_KP = vertexFitTree->currentParticle();
+
+  RefCountedKinematicParticle kp_KP, km_KP ;
+
+  if ( k1_KP->currentState().particleCharge() > 0 ) kp_KP = k1_KP;
+  if ( k1_KP->currentState().particleCharge() < 0 ) km_KP = k1_KP;
+  if ( k2_KP->currentState().particleCharge() > 0 ) kp_KP = k2_KP;
+  if ( k2_KP->currentState().particleCharge() < 0 ) km_KP = k2_KP;
+
+  kpchg->push_back(kp_KP->currentState().particleCharge());
+  kppx->push_back(kp_KP->currentState().globalMomentum().x());
+  kppy->push_back(kp_KP->currentState().globalMomentum().y());
+  kppz->push_back(kp_KP->currentState().globalMomentum().z());
+
+  kmchg->push_back(km_KP->currentState().particleCharge());
+  kmpx->push_back(km_KP->currentState().globalMomentum().x());
+  kmpy->push_back(km_KP->currentState().globalMomentum().y());
+  kmpz->push_back(km_KP->currentState().globalMomentum().z());
+
+
+}
+
+void
+BsToPhiMuMu::saveBsVertex(RefCountedKinematicTree vertexFitTree){
+  vertexFitTree->movePointerToTheTop();
+  RefCountedKinematicVertex b_KV = vertexFitTree->currentDecayVertex();
+  bvtxx->push_back((*b_KV).position().x());
+  bvtxxerr->push_back(sqrt( abs(b_KV->error().cxx()) ));
+  bvtxy->push_back((*b_KV).position().y());
+  bvtxyerr->push_back(sqrt( abs(b_KV->error().cyy()) ));
+  bvtxz->push_back((*b_KV).position().z());
+  bvtxzerr->push_back(sqrt( abs(b_KV->error().czz()) ));
+
+}
+
+void 
+BsToPhiMuMu::saveBsCosAlpha(RefCountedKinematicTree vertexFitTree)
+{
+  // alpha is the angle in the transverse plane between the B0 momentum                                                                             
+  // and the seperation between the B0 vertex and the beamspot                                                                                           
+
+  vertexFitTree->movePointerToTheTop();
+  RefCountedKinematicParticle b_KP = vertexFitTree->currentParticle();
+  RefCountedKinematicVertex   b_KV = vertexFitTree->currentDecayVertex();
+
+  double cosAlphaBS, cosAlphaBSErr;
+  calCosAlpha(b_KP->currentState().globalMomentum().x(),
+              b_KP->currentState().globalMomentum().y(),
+              b_KP->currentState().globalMomentum().z(),
+              b_KV->position().x() - beamSpot_.position().x(),
+              b_KV->position().y() - beamSpot_.position().y(),
+              b_KV->position().z() - beamSpot_.position().z(),
+              b_KP->currentState().kinematicParametersError().matrix()(3,3),
+              b_KP->currentState().kinematicParametersError().matrix()(4,4),
+              b_KP->currentState().kinematicParametersError().matrix()(5,5),
+              b_KP->currentState().kinematicParametersError().matrix()(3,4),
+              b_KP->currentState().kinematicParametersError().matrix()(3,5),
+              b_KP->currentState().kinematicParametersError().matrix()(4,5),
+              b_KV->error().cxx() + beamSpot_.covariance()(0,0),
+              b_KV->error().cyy() + beamSpot_.covariance()(1,1),
+              b_KV->error().czz() + beamSpot_.covariance()(2,2),
+              b_KV->error().matrix()(0,1) + beamSpot_.covariance()(0,1),
+              b_KV->error().matrix()(0,2) + beamSpot_.covariance()(0,2),
+              b_KV->error().matrix()(1,2) + beamSpot_.covariance()(1,2),
+              &cosAlphaBS,&cosAlphaBSErr);
+
+
+  bcosalphabs->push_back(cosAlphaBS);
+  bcosalphabserr->push_back(cosAlphaBSErr);
+
+}
+
+
+void
+BsToPhiMuMu::saveBsCosAlpha2d(RefCountedKinematicTree vertexFitTree)
+{
+
+  vertexFitTree->movePointerToTheTop();
+  RefCountedKinematicParticle b_KP = vertexFitTree->currentParticle();
+  RefCountedKinematicVertex   b_KV = vertexFitTree->currentDecayVertex();
+
+  double cosAlphaBS2d, cosAlphaBS2dErr;
+  calCosAlpha2d(b_KP->currentState().globalMomentum().x(),
+                b_KP->currentState().globalMomentum().y(),0.0,                   
+                b_KV->position().x() - beamSpot_.position().x(),
+                b_KV->position().y() - beamSpot_.position().y(),0.0,
+                b_KP->currentState().kinematicParametersError().matrix()(3,3),
+                b_KP->currentState().kinematicParametersError().matrix()(4,4),0.0,
+                b_KP->currentState().kinematicParametersError().matrix()(3,4),0.0,0.0,
+                b_KV->error().cxx() + beamSpot_.covariance()(0,0),
+                b_KV->error().cyy() + beamSpot_.covariance()(1,1),0.0,
+                b_KV->error().matrix()(0,1) + beamSpot_.covariance()(0,1),0.0,0.0,
+                &cosAlphaBS2d,&cosAlphaBS2dErr);
+
+
+  bcosalphabs2d->push_back(cosAlphaBS2d);
+  bcosalphabs2derr->push_back(cosAlphaBS2dErr);
+
+}
+
+void 
+BsToPhiMuMu::saveBsLsig(RefCountedKinematicTree vertexFitTree)
+{
+  vertexFitTree->movePointerToTheTop();
+  RefCountedKinematicVertex b_KV = vertexFitTree->currentDecayVertex();
+  double LSBS, LSBSErr;
+
+  calLS (b_KV->position().x(), b_KV->position().y(), 0.0,
+         beamSpot_.position().x(), beamSpot_.position().y(), 0.0,
+         b_KV->error().cxx(), b_KV->error().cyy(), 0.0,
+         b_KV->error().matrix()(0,1), 0.0, 0.0,
+         beamSpot_.covariance()(0,0), beamSpot_.covariance()(1,1), 0.0,
+         beamSpot_.covariance()(0,1), 0.0, 0.0,
+         &LSBS,&LSBSErr);
+
+  blsbs->push_back(LSBS);
+  blsbserr->push_back(LSBSErr);
+
+}
+
+void
+BsToPhiMuMu::calCtau(RefCountedKinematicTree vertexFitTree,
+		     double &bctau, double &bctauerr)
+{
+  //calculate ctau = (mB*(Bvtx-Pvtx)*pB)/(|pB|**2)                                                                                                     
+
+  vertexFitTree->movePointerToTheTop();
+  RefCountedKinematicParticle b_KP = vertexFitTree->currentParticle();
+  RefCountedKinematicVertex   b_KV = vertexFitTree->currentDecayVertex();
+
+  double betagamma = (b_KP->currentState().globalMomentum().mag()/BsMass_);
+
+  // calculate ctau error. Momentum error is negligible compared to                                                                                       
+  // the vertex errors, so don't worry about it                                                                                                         
+
+  GlobalPoint BVP = GlobalPoint( b_KV->position() );
+  GlobalPoint PVP = GlobalPoint( primaryVertex_.position().x(),
+                                 primaryVertex_.position().y(),
+                                 primaryVertex_.position().z() );
+  GlobalVector sep3D = BVP-PVP;
+  GlobalVector pBV = b_KP->currentState().globalMomentum();
+  bctau = (BsMass_* (sep3D.dot(pBV)))/(pBV.dot(pBV));
+
+  GlobalError BVE = b_KV->error();
+  GlobalError PVE = GlobalError( primaryVertex_.error() );
+  VertexDistance3D theVertexDistance3D;
+  Measurement1D TheMeasurement = theVertexDistance3D.distance( VertexState(BVP, BVE), VertexState(PVP, PVE) );
+  double myError = TheMeasurement.error();
+
+  //  ctau is defined by the portion of the flight distance along                                                                  
+  //  the compoenent of the B momementum, so only consider the error                                                                                      
+  //  of that component, too, which is accomplished by scaling by                                                                                        
+  //  ((VB-VP)(dot)PB)/|VB-VP|*|PB|                                                                                                                       
+
+  double scale = abs( (sep3D.dot(pBV))/(sep3D.mag()*pBV.mag()) );
+  bctauerr =  (myError*scale)/betagamma;
+
+}
+
+double
+BsToPhiMuMu::calEta (double Px, double Py, double Pz)
+{
+  double P = sqrt(Px*Px + Py*Py + Pz*Pz);
+  return 0.5*log((P + Pz) / (P - Pz));
+}
+
+double
+BsToPhiMuMu::calPhi (double Px, double Py, double Pz)
+{
+  double phi = atan(Py / Px);
+  if (Px < 0 && Py < 0) phi = phi - PI;
+  if (Px < 0 && Py > 0) phi = phi + PI;
+  return phi;
+}
+
+double
+BsToPhiMuMu::calEtaPhiDistance (double Px1, double Py1, double Pz1,
+				double Px2, double Py2, double Pz2)
+{
+  double phi1 = calPhi (Px1,Py1,Pz1);
+  double eta1 = calEta (Px1,Py1,Pz1);
+  double phi2 = calPhi (Px2,Py2,Pz2);
+  double eta2 = calEta (Px2,Py2,Pz2);
+  return sqrt((eta1-eta2) * (eta1-eta2) + (phi1-phi2) * (phi1-phi2));
+}
+
+void 
+BsToPhiMuMu::saveBsCtau(RefCountedKinematicTree vertexFitTree)
+{
+  double bctau_temp, bctauerr_temp;
+  calCtau(vertexFitTree, bctau_temp, bctauerr_temp);
+  bctau->push_back(bctau_temp);
+  bctauerr->push_back(bctauerr_temp);
 }
 
 
